@@ -24,3 +24,9 @@ void sys_recv(int from, int* sender, char* buf, uint size) {
     memcpy(buf, sc->content, size);
     if (sender) *sender = sc->sender;
 }
+
+int sys_getpid(void) {
+    sc->type = SYS_GETPID;
+    asm("ecall");
+    return sc->sender;
+}

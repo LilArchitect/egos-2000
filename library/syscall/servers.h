@@ -21,6 +21,30 @@ enum grass_servers {
 #define CMD_NARGS   16
 #define CMD_ARG_LEN 32
 
+// Defines the id for the getpid
+#define PROC_GETPID 4
+#define PROC_PS 5
+#define PROC_SLEEP 6
+
+#define PS_MAX 16
+
+
+struct ps_reply {
+    int count;
+    struct {
+        int pid;
+        char name[CMD_ARG_LEN];
+    } procs[PS_MAX];
+};
+
+int get_ps(struct ps_reply* reply);
+
+struct proc_getpid_reply {
+    int pid;
+};
+
+int getpid(void);
+
 struct proc_request {
     /* Student's code goes here (System Call & Protection). */
 
@@ -28,7 +52,7 @@ struct proc_request {
     enum { PROC_SPAWN, PROC_EXIT, PROC_KILLALL } type;
     int argc;
     char argv[CMD_NARGS][CMD_ARG_LEN];
-    /* Student's code ends here. */
+    uint sleep_usecs;
 };
 
 struct proc_reply {

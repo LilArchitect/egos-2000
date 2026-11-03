@@ -19,6 +19,11 @@ struct process proc_set[MAX_NPROCESS + 1];
 #define curr_pid      proc_set[curr_proc_idx].pid
 #define curr_status   proc_set[curr_proc_idx].status
 #define curr_saved    proc_set[curr_proc_idx].saved_registers
+#define CORE_IDLE (curr_proc_idx == MAX_NPROCESS)
+
+#define PREEMPTIVE 0
+
+extern void idle_entry(void);
 
 static void intr_entry(uint);
 static void excp_entry(uint);
@@ -30,6 +35,9 @@ void kernel_entry() {
     /* Save the process context. */
     asm("csrr %0, mepc" : "=r"(proc_set[curr_proc_idx].mepc));
     memcpy(curr_saved, (void*)(EGOS_STACK_TOP - 32 * 4), 32 * 4);
+    if (!CORE_IDLE) {
+        proc_set[curr_proc_idx].number_of_kernel_entries++;
+    }
 
     uint mcause;
     asm("csrr %0, mcause" : "=r"(mcause));
@@ -48,6 +56,7 @@ static void proc_try_syscall(struct process* proc);
 
 static void excp_entry(uint id) {
     if (id >= EXCP_ID_ECALL_U && id <= EXCP_ID_ECALL_M) {
+        proc_set[curr_proc_idx].number_of_syscalls++;
         /* Copy the system call arguments from user space to the kernel. */
         uint syscall_paddr = earth->mmu_translate(curr_pid, SYSCALL_ARG);
         memcpy(&proc_set[curr_proc_idx].syscall, (void*)syscall_paddr,
@@ -69,75 +78,92 @@ static void excp_entry(uint id) {
 }
 
 static void intr_entry(uint id) {
-    /* Student's code goes here (Preemptive Scheduling). */
+    if (id == INTR_ID_TIMER) {
+        if (!CORE_IDLE) {
+            proc_set[curr_proc_idx].number_of_interrupts++;
+        }
 
-    /* Update the process lifecycle statistics. */
-
-    /* Student's code ends here. */
-
-    if (id == INTR_ID_TIMER) return proc_yield();
-
-    /* Student's code goes here (Ethernet & TCP/IP). */
-
-    /* Handle an external interrupt from the Intel Gigabit Ethernet Controller.
-     * Specifically, you need to (1) Claim the PLIC interrupt; (2) Check if the
-     * interrupt is for receiving an Ethernet frame; (3) Read the received frame
-     * from an RX buffer and print the content; (4) Complete the PLIC interrupt,
-     * so PLIC can fire the next interrupt; (5) Call proc_yield() and return. */
-
-    /* Student's code ends here. */
+        if (PREEMPTIVE || CORE_IDLE) {
+            proc_yield();
+        } else {
+            earth->timer_reset(core_in_kernel);
+        }
+    }
 }
 
 static void proc_yield() {
-    if (curr_status == PROC_RUNNING) proc_set_runnable(curr_pid);
-
-    /* Student's code goes here (Multiple Projects). */
-
-    /* [Preemptive Scheduling]
-     * Measure and record lifecycle statistics for the *current* process.
-     * Modify the loop below to find the next process to schedule with MLFQ.
-     * [System Call & Protection]
-     * Do not schedule a process that should still be sleeping at this time. */
+    if (!CORE_IDLE && curr_status == PROC_RUNNING) {
+        proc_set_runnable(curr_pid);
+    }
 
     int next_idx = MAX_NPROCESS;
-    for (uint i = 1; i <= MAX_NPROCESS; i++) {
-        struct process* p = &proc_set[(curr_proc_idx + i) % MAX_NPROCESS];
-        if (p->status == PROC_PENDING_SYSCALL) proc_try_syscall(p);
 
-        if (p->status == PROC_READY || p->status == PROC_RUNNABLE) {
-            next_idx = (curr_proc_idx + i) % MAX_NPROCESS;
+    for (uint i = 1; i <= MAX_NPROCESS; i++) {
+        uint idx = (curr_proc_idx + i) % MAX_NPROCESS;
+        struct process* p = &proc_set[idx];
+
+        if (p->status == PROC_PENDING_SYSCALL) {
+            proc_try_syscall(p);
+        }
+
+        if (p->status == PROC_SLEEPING &&
+            p->sleep_end_time <= mtime_get()) {
+            p->status = PROC_RUNNABLE;
+        }
+
+        if (p->status == PROC_READY ||
+            p->status == PROC_RUNNABLE) {
+            next_idx = idx;
             break;
         }
     }
 
-    if (next_idx < MAX_NPROCESS) {
-        /* [Preemptive Scheduling]
-         * Measure and record lifecycle statistics for the *next* process.
-         * [System Call & Protection | Multicore & Locks]
-         * Modify mstatus.MPP to enter machine or user mode after mret. */
+    ulonglong now = mtime_get();
 
-    } else {
-        /* [Multicore & Locks]
-         * Release the kernel lock.
-         * [Multicore & Locks | System Call & Protection]
-         * Set curr_proc_idx to MAX_NPROCESS; Reset the timer;
-         * Enable interrupts by setting the mstatus.MIE bit to 1;
-         * Wait for the next interrupt using the wfi instruction. */
-
-        FATAL("proc_yield: no process to run on core %d", core_in_kernel);
+    if (!CORE_IDLE) {
+        proc_set[curr_proc_idx].cpu_time +=
+            now - proc_set[curr_proc_idx].last_run_time;
     }
-    /* Student's code ends here. */
 
+    if (next_idx == MAX_NPROCESS) {
+        struct process* idle = &proc_set[MAX_NPROCESS];
+
+        if (!CORE_IDLE) {
+            memcpy(idle->saved_registers,
+                   curr_saved, sizeof(idle->saved_registers));
+        }
+
+        idle->mepc = (uint)idle_entry;
+        idle->saved_registers[30] = EGOS_STACK_TOP;
+
+        curr_proc_idx = MAX_NPROCESS;
+
+        uint mstatus;
+        asm volatile("csrr %0, mstatus" : "=r"(mstatus));
+        mstatus |= (3U << 11) | (1U << 7);
+        asm volatile("csrw mstatus, %0" :: "r"(mstatus));
+
+        earth->timer_reset(core_in_kernel);
+        return;
+    }
+
+    if (proc_set[next_idx].status == PROC_READY) {
+        proc_set[next_idx].response_time =
+            now - proc_set[next_idx].start_time;
+    }
+
+    proc_set[next_idx].last_run_time = now;
     curr_proc_idx = next_idx;
+
     earth->mmu_switch(curr_pid);
     earth->mmu_flush_cache();
+
     if (curr_status == PROC_READY) {
-        /* Set up the argc, argv, and initial program
-         * counter for a newly created process. */
-        curr_saved[0]                = APPS_ARG;
-        curr_saved[1]                = APPS_ARG + 4;
+        curr_saved[0] = APPS_ARG;
+        curr_saved[1] = APPS_ARG + 4;
         proc_set[curr_proc_idx].mepc = APPS_ENTRY;
     }
+
     proc_set_running(curr_pid);
     earth->timer_reset(core_in_kernel);
 }
@@ -184,10 +210,27 @@ static void proc_try_syscall(struct process* proc) {
     case SYS_RECV:
         proc_try_recv(proc);
         break;
+
     case SYS_SEND:
         proc_try_send(proc);
         break;
+
+    case SYS_GETPID: {
+        proc->syscall.sender = proc->pid;
+        proc->syscall.status = DONE;
+
+        uint syscall_paddr =
+            earth->mmu_translate(proc->pid, SYSCALL_ARG);
+
+        memcpy((void*)syscall_paddr,
+               &proc->syscall, sizeof(struct syscall));
+
+        proc_set_runnable(proc->pid);
+        break;
+    }
+
     default:
-        FATAL("proc_try_syscall: unknown syscall type=%d", proc->syscall.type);
+        FATAL("proc_try_syscall: unknown syscall type=%d",
+              proc->syscall.type);
     }
 }

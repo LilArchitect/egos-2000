@@ -9,7 +9,8 @@ enum proc_status {
     PROC_READY,
     PROC_RUNNING,
     PROC_RUNNABLE,
-    PROC_PENDING_SYSCALL
+    PROC_PENDING_SYSCALL,
+    PROC_SLEEPING
 };
 
 struct process {
@@ -17,11 +18,17 @@ struct process {
     struct syscall syscall;
     enum proc_status status;
     uint mepc, saved_registers[32];
-    /* Student's code goes here (Preemptive Scheduling | System Call). */
+    uint syscall_count;
 
-    /* Add new fields for lifecycle statistics, MLFQ, or process sleep. */
+    ulonglong start_time;
+    ulonglong last_run_time;
+    ulonglong sleep_end_time;
 
-    /* Student's code ends here. */
+    int response_time;
+    int cpu_time;
+    int number_of_kernel_entries;
+    int number_of_syscalls;
+    int number_of_interrupts;
 };
 #define MAX_NPROCESS 16
 

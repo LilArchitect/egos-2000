@@ -113,5 +113,10 @@ trap_entry:
     /* Step8 */
     mret
 
+    .global idle_entry
+idle_entry:
+    wfi
+    j idle_entry
+
 .bss
     kernel_lock:     .word 0

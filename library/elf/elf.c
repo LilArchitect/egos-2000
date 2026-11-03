@@ -78,4 +78,6 @@ void elf_load(int pid, elf_reader reader, int argc, void** argv) {
         ppage_id = earth->mmu_alloc();
         earth->mmu_map(pid, APPS_STACK_TOP / PAGE_SIZE - i, ppage_id);
     }
+
+    INFO("Finished loading process %d", pid);
 }

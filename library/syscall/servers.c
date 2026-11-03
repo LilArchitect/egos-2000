@@ -12,6 +12,28 @@
 static int sender;
 static char buf[SYSCALL_MSG_LEN];
 
+int getpid(void) {
+    struct proc_request req;
+    req.type = PROC_GETPID;
+    
+    sys_send(GPID_PROCESS, (char*)&req, sizeof(req));
+
+    struct proc_getpid_reply reply;
+    sys_recv(GPID_PROCESS, NULL, (char*)&reply, sizeof(reply));
+    
+    return reply.pid;
+}
+
+int get_ps(struct ps_reply* reply) {
+    struct proc_request req;
+    req.type = PROC_PS;
+
+    sys_send(GPID_PROCESS, (char*)&req, sizeof(req));
+    sys_recv(GPID_PROCESS, NULL, (char*)reply, sizeof(*reply));
+
+    return reply->count;
+}
+
 void exit(int status) {
     struct proc_request req;
     req.type = PROC_EXIT;
@@ -20,13 +42,12 @@ void exit(int status) {
 }
 
 void sleep(uint usec) {
-    /* Student's code goes here (System Call & Protection). */
+    struct proc_request req = {0};
 
-    /* Send a message to GPID_PROCESS for process sleep. For simplicity,
-     * you can assume that GPID_PROCESS will be scheduled and handle the
-     * message before the kernel reschedules the current process. */
+    req.type = PROC_SLEEP;
+    req.sleep_usecs = usec;
 
-    /* Student's code ends here. */
+    sys_send(GPID_PROCESS, (char*)&req, sizeof(req));
 }
 
 int dir_lookup(int dir_ino, char* name) {

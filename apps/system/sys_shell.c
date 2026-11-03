@@ -43,6 +43,8 @@ int main() {
             grass->sys_send(GPID_PROCESS, (void*)&req, sizeof(req));
         } else if (strcmp(buf, "pwd") == 0) {
             printf("%s\n\r", workdir);
+        } else if (strcmp(buf, "system") == 0) {
+            printf("egos2000\n");
         } else {
             req.type = PROC_SPAWN;
             if (0 != parse_request(buf, &req)) {
@@ -59,7 +61,7 @@ int main() {
                     grass->sys_recv(GPID_PROCESS, NULL, (void*)&reply,
                                     sizeof(reply));
             }
-        }
+        } 
 
         do {
             printf("\x1B[1;32m➜ \x1B[1;36m%s\x1B[1;0m ", workdir);
