@@ -21,12 +21,13 @@ struct process proc_set[MAX_NPROCESS + 1];
 #define curr_saved    proc_set[curr_proc_idx].saved_registers
 #define CORE_IDLE (curr_proc_idx == MAX_NPROCESS)
 
-#define PREEMPTIVE 0
+#define PREEMPTIVE 1
 
 extern void idle_entry(void);
 
 static void intr_entry(uint);
 static void excp_entry(uint);
+static const char* exception_name(uint id);
 
 void kernel_entry() {
     /* With the kernel lock, only one core can enter this point at any time. */
@@ -55,6 +56,11 @@ static void proc_yield();
 static void proc_try_syscall(struct process* proc);
 
 static void excp_entry(uint id) {
+    /*
+    printf("Exception entry: id=%d, pid=%d, user_start=%d, mepc=0x%x\r\n",
+    id, curr_pid, GPID_USER_START,
+    proc_set[curr_proc_idx].mepc);
+    */
     if (id >= EXCP_ID_ECALL_U && id <= EXCP_ID_ECALL_M) {
         proc_set[curr_proc_idx].number_of_syscalls++;
         /* Copy the system call arguments from user space to the kernel. */
@@ -72,9 +78,41 @@ static void excp_entry(uint id) {
     /* Student's code goes here (System Call & Protection | Virtual Memory). */
 
     /* Kill the current process if curr_pid is a user application. */
+    if (curr_pid >= GPID_USER_START) {
+        struct process* p = &proc_set[curr_proc_idx];
+        uint mtval;
+        asm volatile("csrr %0, mtval" : "=r"(mtval));
 
+        INFO("process %d killed: %s (mcause %d), mepc=0x%x, mtval=0x%x",
+        p->pid, exception_name(id), id, p->mepc, mtval);
+
+        struct proc_request req = {0};
+        req.type = PROC_EXIT;
+
+        /* Construct an exit message without executing ecall in the kernel. */
+        memset(&p->syscall, 0, sizeof(p->syscall));
+        p->syscall.type = SYS_SEND;
+        p->syscall.receiver = GPID_PROCESS;
+        memcpy(p->syscall.content, &req, sizeof(req));
+        p->syscall.status = PENDING;
+
+        proc_set_pending(curr_pid);
+        proc_try_syscall(p);
+        proc_yield();
+        return;
+    }
     /* Student's code ends here. */
     FATAL("excp_entry: kernel got exception %d", id);
+}
+
+static const char* exception_name(uint id) {
+    switch (id) {
+    case 1: return "instruction access fault";
+    case 2: return "illegal instruction";
+    case 5: return "load access fault";
+    case 7: return "store access fault";
+    default: return "other exception";
+    }
 }
 
 static void intr_entry(uint id) {
@@ -154,6 +192,17 @@ static void proc_yield() {
 
     proc_set[next_idx].last_run_time = now;
     curr_proc_idx = next_idx;
+
+    uint mstatus;
+    asm volatile("csrr %0, mstatus" : "=r"(mstatus));
+
+    if (curr_pid >= GPID_USER_START) {
+        mstatus &= ~(3U << 11);  /* MPP = 00: user mode */
+    } else {
+        mstatus |= (3U << 11);   /* MPP = 11: machine mode */
+    }
+
+    asm volatile("csrw mstatus, %0" :: "r"(mstatus));
 
     earth->mmu_switch(curr_pid);
     earth->mmu_flush_cache();

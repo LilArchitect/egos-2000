@@ -196,14 +196,12 @@ void mmu_init() {
     earth->mmu_flush_cache = flush_cache;
 
     /* Set up a PMP region for the whole 4GB address space. */
-    asm("csrw pmpaddr0, %0" : : "r"(0x40000000));
-    asm("csrw pmpcfg0, %0" : : "r"(0xF));
-
-    /* Student's code goes here (System Call & Protection). */
-
-    /* Replace the PMP region above with two PMP NAPOT regions:
-     * [APPS_ENTRY, APPS_ENTRY + 2MB) with permission R/W/X;
-     * [SHELL_WORK_DIR, SHELL_WORK_DIR + 4KB) with permission R/W. */
+    /* Entry 0: application window, 0x80200000–0x803FFFFF, R/W/X.
+     * Entry 1: shared working-directory page, 0x80102000–0x80102FFF, R/W.
+     */
+    asm volatile("csrw pmpaddr0, %0" :: "r"(0x200BFFFFU));
+    asm volatile("csrw pmpaddr1, %0" :: "r"(0x200409FFU));
+    asm volatile("csrw pmpcfg0, %0" :: "r"(0x00001B1FU));
 
     /* Student's code ends here. */
 
