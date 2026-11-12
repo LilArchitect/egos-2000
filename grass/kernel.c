@@ -158,6 +158,15 @@ static void proc_yield() {
     earth->mmu_switch(curr_pid);
     earth->mmu_flush_cache();
 
+    uint mstatus;
+    asm volatile("csrr %0, mstatus" : "=r"(mstatus));
+    if (curr_pid >= GPID_USER_START || earth->translation == PAGE_TABLE) {
+        mstatus &= ~(3U << 11);
+    } else {
+        mstatus |= (3U << 11);
+    }
+    asm volatile("csrw mstatus, %0" :: "r"(mstatus));
+    
     if (curr_status == PROC_READY) {
         curr_saved[0] = APPS_ARG;
         curr_saved[1] = APPS_ARG + 4;
