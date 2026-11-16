@@ -27,6 +27,11 @@ void pt_dump(int pid);
 void page_table_free(int pid);
 
 /* Memory allocation and free */
+/* Memory allocation and free */
+#define PAGE_SIZE          4096
+#define PAGE_ID_TO_ADDR(x) ((void*)(APPS_PAGES_BASE + (x) * PAGE_SIZE))
+#define PAGE_NO_TO_ADDR(x) ((void*)((x) * PAGE_SIZE))
+#define APPS_PAGES_CNT     (RAM_END - APPS_PAGES_BASE) / PAGE_SIZE
 #define APPS_PAGES_CNT (RAM_END - APPS_PAGES_BASE) / PAGE_SIZE
 struct page_info {
     int use;       /* Is this page free or allocated? */
@@ -53,7 +58,17 @@ void mmu_free(int pid) {
 
     /* Seminar 4, Exercise 1: print one line for each page of pid (its
      * virtual page and its frame), and then the number of pages released. */
-
+    /* Exercise 1: imprimir las páginas asignadas al proceso antes de liberarlas */
+    uint total_released = 0;
+    for (uint i = 0; i < APPS_PAGES_CNT; i++) { 
+        if (page_info_table[i].use != 0 && page_info_table[i].pid == pid) {
+            uint frame = (uint)PAGE_ID_TO_ADDR(i) >> 12;
+            INFO("process %d: virtual page 0x%x in frame 0x%x",
+                 pid, page_info_table[i].vpage_no, frame);
+            total_released++;
+        }
+    }
+    INFO("process %d released %d pages", pid, total_released);
     /* Seminar 4, Exercise 5: release the pages by following the page tables */
     if (by_tables) page_table_free(pid);
 
@@ -112,7 +127,7 @@ uint soft_tlb_translate(int pid, uint vaddr) {
 #define USER_RWX     (0xC0 | 0x1F)
 #define PTE_VALID    0x1
 #define MAX_NPROCESS 256
-#define WORK_DIR     (SYSCALL_ARG + PAGE_SIZE) /* shared with the shell, see apps/app.h */
+#define WORK_DIR   SHELL_WORK_DIR /* shared with the shell, see apps/app.h */
 static uint* root;
 static uint* leaf;
 static uint* pid_to_pagetable_base[MAX_NPROCESS];
@@ -147,18 +162,25 @@ void pagetable_identity_map(int pid) {
     page_info_table[ppage_id].pid = pid;
     pid_to_pagetable_base[pid]    = root;
 
+   /* Allocate the leaf page tables */
     /* Allocate the leaf page tables */
     for (uint i = RAM_START; i < RAM_END; i += PAGE_SIZE * 1024)
         setup_identity_region(pid, i, 1024, USER_RWX);    /* RAM   */
     setup_identity_region(pid, CLINT_BASE, 16, USER_RWX); /* CLINT */
     setup_identity_region(pid, UART_BASE, 1, USER_RWX);   /* UART  */
-    setup_identity_region(pid, SPI_BASE, 1, USER_RWX);    /* SPI   */
 
-    if (earth->platform == ARTY) {
-        setup_identity_region(pid, BOARD_FLASH_ROM, 1024, USER_RWX); /* ROM */
-        setup_identity_region(pid, ETHMAC_CSR_BASE, 1, USER_RWX);
-        setup_identity_region(pid, ETHMAC_TX_BUFFER, 1, USER_RWX);
-        setup_identity_region(pid, ETHMAC_RX_BUFFER, 1, USER_RWX);
+    if (earth->platform == QEMU) {
+        setup_identity_region(pid, PLIC_BASE, 16, USER_RWX);
+        setup_identity_region(pid, FLASH_ROM_BASE, 1024, USER_RWX);
+        setup_identity_region(pid, SDHCI_PCI_ECAM, 1, USER_RWX);
+        setup_identity_region(pid, SDHCI_BASE, 1, USER_RWX);
+        setup_identity_region(pid, ETH_PCI_ECAM, 1, USER_RWX);
+        setup_identity_region(pid, ETH_CTL_BASE, 1, USER_RWX);
+    } else {
+        setup_identity_region(pid, SDSPI_BASE, 1, USER_RWX);
+        setup_identity_region(pid, WIFI_BASE, 1, USER_RWX);
+        setup_identity_region(pid, ETH_CTL_BASE, 1, USER_RWX);
+        setup_identity_region(pid, ETH_BUF_BASE, 16, USER_RWX);
     }
 }
 
@@ -290,7 +312,7 @@ void pt_dump(int pid) {
 }
 
 void flush_cache() {
-    if (earth->platform == ARTY) {
+    if (earth->platform == HARDWARE) {
         /* Flush the L1 instruction cache */
         /* See
          * https://github.com/yhzhang0128/litex/blob/egos/litex/soc/cores/cpu/vexriscv_smp/system.h#L9-L25

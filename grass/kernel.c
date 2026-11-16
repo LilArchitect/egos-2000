@@ -21,7 +21,7 @@ struct process proc_set[MAX_NPROCESS + 1];
 #define curr_saved    proc_set[curr_proc_idx].saved_registers
 #define CORE_IDLE (curr_proc_idx == MAX_NPROCESS)
 
-#define PREEMPTIVE 0
+#define PREEMPTIVE 1
 
 extern void idle_entry(void);
 
@@ -166,7 +166,7 @@ static void proc_yield() {
         mstatus |= (3U << 11);
     }
     asm volatile("csrw mstatus, %0" :: "r"(mstatus));
-    
+
     if (curr_status == PROC_READY) {
         curr_saved[0] = APPS_ARG;
         curr_saved[1] = APPS_ARG + 4;
