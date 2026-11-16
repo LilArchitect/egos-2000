@@ -2,7 +2,7 @@
 
 #include "thread.h"
 
-#define USE_MUTEX 0     /* 0: no mutex (Exercises 1 and 4)
+#define USE_MUTEX 1     /* 0: no mutex (Exercises 1 and 4)
                            1: mutex_lock / mutex_unlock (Exercises 2, 3 and 5) */
 #define N_THREADS 4
 #define ROUNDS    5

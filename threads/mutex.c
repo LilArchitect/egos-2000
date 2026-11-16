@@ -3,22 +3,26 @@
 #include "thread.h"
 
 void mutex_init(struct mutex *m) {
-    /* Exercise 2: the mutex starts free, with nobody waiting. */
-
+    m->open = 1;
+    m->n_threads_waiting = 0;
 }
 
 void mutex_lock(struct mutex *m) {
-    /* Exercise 2:
-     * - If the mutex is free, take it and return.
-     * - If not, add your tid at the END of tid_waiting and block.
-     *   When you wake up, mutex_unlock has already given the mutex to you. */
-
+    if (m->open == 1) {
+        m->open = 0;
+    } else {
+        m->tid_waiting[m->n_threads_waiting] = thread_self();
+        m->n_threads_waiting++;
+        thread_block();
+    }
 }
 
 void mutex_unlock(struct mutex *m) {
-    /* Exercise 2:
-     * - If nobody waits, the mutex becomes free.
-     * - If not, take the LAST tid of tid_waiting and unblock it.
-     *   The mutex goes directly to that thread: do not make it free. */
-
+    if (m->n_threads_waiting == 0) {
+        m->open = 1;
+    } else {
+        m->n_threads_waiting--;
+        int next_tid = m->tid_waiting[m->n_threads_waiting];
+        thread_unblock(next_tid);
+    }
 }
