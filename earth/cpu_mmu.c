@@ -22,7 +22,7 @@
 /* Seminar 4: set to 0 to stop printing the page tables of every process that ends */
 #define PT_DUMP 1
 /* Seminar 4, Exercise 5: set to 1 when page_table_free() is complete */
-#define PT_FREE 0
+#define PT_FREE 1
 void pt_dump(int pid);
 void page_table_free(int pid);
 
@@ -33,6 +33,9 @@ void page_table_free(int pid);
 #define PAGE_NO_TO_ADDR(x) ((void*)((x) * PAGE_SIZE))
 #define APPS_PAGES_CNT     (RAM_END - APPS_PAGES_BASE) / PAGE_SIZE
 #define APPS_PAGES_CNT (RAM_END - APPS_PAGES_BASE) / PAGE_SIZE
+
+static uint pages_copied = 0;
+
 struct page_info {
     int use;       /* Is this page free or allocated? */
     int pid;       /* Which process owns this page? */
@@ -69,6 +72,9 @@ void mmu_free(int pid) {
         }
     }
     INFO("process %d released %d pages", pid, total_released);
+    if (earth->translation == SOFT_TLB) {
+        INFO("pages copied by soft_tlb_switch since boot: %d", pages_copied);
+    }
     /* Seminar 4, Exercise 5: release the pages by following the page tables */
     if (by_tables) page_table_free(pid);
 
@@ -95,16 +101,21 @@ void soft_tlb_switch(int pid) {
     if (pid == curr_vm_pid) return;
 
     /* Unmap curr_vm_pid from the user address space */
-    for (uint i = 0; i < APPS_PAGES_CNT; i++)
-        if (page_info_table[i].use && page_info_table[i].pid == curr_vm_pid)
+    for (uint i = 0; i < APPS_PAGES_CNT; i++){
+        if (page_info_table[i].use && page_info_table[i].pid == curr_vm_pid){
             memcpy(PAGE_ID_TO_ADDR(i),
                    PAGE_NO_TO_ADDR(page_info_table[i].vpage_no), PAGE_SIZE);
-
+            pages_copied++;
+        }
+    }
     /* Map pid to the user address space */
-    for (uint i = 0; i < APPS_PAGES_CNT; i++)
-        if (page_info_table[i].use && page_info_table[i].pid == pid)
+    for (uint i = 0; i < APPS_PAGES_CNT; i++){
+        if (page_info_table[i].use && page_info_table[i].pid == pid){
             memcpy(PAGE_NO_TO_ADDR(page_info_table[i].vpage_no),
                    PAGE_ID_TO_ADDR(i), PAGE_SIZE);
+            pages_copied++;
+        }
+    }
 
     curr_vm_pid = pid;
 }
@@ -270,14 +281,13 @@ void page_table_free(int pid) {
      * expression (they are like the expressions of page_table_translate).
      * Then set PT_FREE to 1 at the beginning of this file. */
 
-    /* DELETE this line
     uint* root_table = pid_to_pagetable_base[pid];
     for (uint i = 0; i < 1024; i++) {
-        if (___) continue;                      // root entry i is not valid
-        uint* leaf_table = (uint*)(___);        // address of its leaf table
+        if (!(root_table[i] & PTE_VALID)) continue;                      // root entry i is not valid
+        uint* leaf_table = (uint*)((root_table[i] >> 10) << 12);        // address of its leaf table
         for (uint j = 0; j < 1024; j++) {
-            if (___) continue;                  // leaf entry j is not valid
-            uint frame = ___;                   // address of its frame
+            if (!(leaf_table[j] & PTE_VALID)) continue;                  // leaf entry j is not valid
+            uint frame = (leaf_table[j] >> 10) << 12;                   // address of its frame
             if (frame >= APPS_PAGES_BASE)       // why? (Exercise 5)
                 free_frame(frame);
         }
@@ -285,7 +295,6 @@ void page_table_free(int pid) {
     }
     free_frame((uint)root_table);               // the root table itself
     pid_to_pagetable_base[pid] = 0;
-    DELETE this line */
 
     INFO("page_table_free released %d pages of process %d", frames_freed, pid);
 }
