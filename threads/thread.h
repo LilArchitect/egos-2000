@@ -21,8 +21,7 @@ int  printf(const char *format, ...);   /* only %d and %s */
 /* ---- The mutex (mutex.c), Exercises 2 and 3 ---- */
 struct mutex {
     int open;                       /* 1 = free, 0 = taken */
-    int n_threads_waiting;          /* how many tids are in tid_waiting */
-    int tid_waiting[MAX_THREADS];   /* the threads that wait for the mutex */
+    struct queue waiting;
 };
 
 void mutex_init(struct mutex *m);

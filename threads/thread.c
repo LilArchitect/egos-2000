@@ -48,7 +48,7 @@ static void halt() {
 
 #define STACK_SIZE (16 * 1024)
 
-#define SCHEDULER 0     /* 0: round robin (as given)
+#define SCHEDULER 1     /* 0: round robin (as given)
                            1: fixed priority: the READY thread with the lowest tid (Exercise 4) */
 
 enum status { EMPTY, READY, RUNNING, WAITING, DONE };
@@ -92,8 +92,12 @@ static void free_done_threads() {
 /* The scheduler: choose the next thread to run among the READY ones (-1 if none). */
 static int next_ready() {
     if (SCHEDULER == 1) {
-        /* Exercise 4: return the READY thread with the lowest tid. */
-
+        for (int i = 0; i < MAX_THREADS; i++) {
+            if (TCB[i].status == READY) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /* Round robin: the first READY thread after the current one. */
