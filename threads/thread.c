@@ -48,7 +48,7 @@ static void halt() {
 
 #define STACK_SIZE (16 * 1024)
 
-#define SCHEDULER 1     /* 0: round robin (as given)
+#define SCHEDULER 0     /* 0: round robin (as given)
                            1: fixed priority: the READY thread with the lowest tid (Exercise 4) */
 
 enum status { EMPTY, READY, RUNNING, WAITING, DONE };
@@ -92,9 +92,9 @@ static void free_done_threads() {
 /* The scheduler: choose the next thread to run among the READY ones (-1 if none). */
 static int next_ready() {
     if (SCHEDULER == 1) {
-        for (int i = 0; i < MAX_THREADS; i++) {
-            if (TCB[i].status == READY) {
-                return i;
+        for (int tid = 0; tid < MAX_THREADS; tid++) {
+            if (TCB[tid].status == READY) {
+                return tid;
             }
         }
         return -1;
@@ -177,15 +177,17 @@ void thread_unblock(int tid) {
 
 /* Wait until thread tid has finished. */
 void thread_join(int tid) {
-    /* Exercise 5: replace this loop. */
-    while (TCB[tid].status != DONE) {
-        thread_yield();
-    }
+    if (TCB[tid].status == DONE) return;
+    TCB[tid].joiner = current;
+    thread_block();
 }
 
 void thread_exit() {
     TCB[current].status = DONE;
     /* Exercise 5: wake up the thread that waits for this one, if there is one. */
+    if (TCB[current].joiner != -1) {
+        thread_unblock(TCB[current].joiner);
+    }
 
     int next = next_ready();
     if (next < 0) no_thread_to_run();

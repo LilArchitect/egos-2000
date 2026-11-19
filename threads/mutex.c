@@ -1,5 +1,3 @@
-/* Seminar 5 - The mutex: this is the file you write */
-
 #include "thread.h"
 
 void mutex_init(struct mutex *m) {
